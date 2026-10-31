@@ -257,7 +257,7 @@ export const SHARE_VIEW_LAYER_OPTION_ABSENT = Object.freeze({
     opacity: 'strong',
     product: 'lightning',
   }),
-  'weather-radar': Object.freeze({ opacity: 'strong' }),
+  'weather-radar': Object.freeze({ opacity: 'strong', product: 'radar' }),
   'weather-satellite': Object.freeze({
     infrared: 100,
     opacity: 'strong',

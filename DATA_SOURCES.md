@@ -429,6 +429,40 @@ included. Required credit, shown on the globe credit line and in the manifest:
 reprojection to EPSG:4326 and the display filter. No EUMETSAT endorsement is
 implied, and no key, account or new dependency is needed.
 
+### Observed weather: EUMETNET OPERA radar (Europe)
+
+The Rain radar row offers a **Europe · OPERA** region from the EUMETNET OPERA
+pan-European composite, published through MeteoGate's open radar data bucket
+(`https://s3.waw3-1.cloudferro.com/openradar-24h/`). It combines national
+weather radars across Europe, including the seven ANM radars over Romania.
+
+- Product: `OPERA@YYYYMMDDTHHMM@0@DBZH.tiff`, the CIRRUS maximum reflectivity
+  composite (dBZ, column maximum), a 3800 × 4400 grid of 1 km cells every 5
+  minutes, typically 5 minutes from observation to publication. Band 1 is DBZH
+  (NaN: covered with no echo; −9.999e6: outside radar coverage); band 2, a
+  quality index, is not used.
+- There is no map service. `server/providers/opera.js` lists the newest frames
+  from hourly bucket prefixes, downloads one frame (about 3 MB) at a time, checks
+  it is the published grid (512² deflate tiles of two float32 samples, LAEA
+  centred on 55°N 10°E on WGS 84, false origin 1 950 000 / −2 100 000 m, 1 km
+  cells) and refuses anything else, then reprojects into the weather layer's
+  geographic tiles and images with the ellipsoidal LAEA formulas (EPSG method
+  9820), using the file's own overviews for wide views. Reflectivity is coloured
+  on the same 10 dBZ bands as the US radar legend; below 10 dBZ is transparent.
+  Bounded caches keep four raw frames and 96 decoded tiles; PNGs are encoded
+  with `node:zlib`, with no new dependency.
+- Frames use exact published times; a time between frames is refused.
+- Meaning: maximum reflectivity indicates precipitation patterns, not rain rate,
+  a storm warning or a forecast, and it is a column maximum rather than the
+  base (lowest-tilt) reflectivity of the US product. Some national volumes are
+  advected by Météo-France to the composite time. Coverage gaps do not establish
+  absence of precipitation.
+
+Rights: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), stated in each
+frame's metadata and in the [EUMETNET open radar data documentation](https://github.com/EUMETNET/openradardata-documentation);
+commercial use with attribution. Credit: "EUMETNET OPERA". Reprojection,
+resampling and colouring are modifications.
+
 ### Weather: NHC/CPHC cyclone advisories
 
 - **Sources:** [NHC current tropical cyclone status](https://www.nhc.noaa.gov/CurrentStorms.json) and

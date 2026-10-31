@@ -6,6 +6,7 @@ const msg = (text) => text;
 
 const WEATHER_PRODUCTS = Object.freeze([
   'radar',
+  'radar-europe',
   'clouds',
   'clouds-regional',
   'clouds-europe',
@@ -13,6 +14,8 @@ const WEATHER_PRODUCTS = Object.freeze([
   'lightning-europe',
 ]);
 
+/** Radar reflectivity products, one per regional source. */
+export const RADAR_PRODUCTS = Object.freeze(['radar', 'radar-europe']);
 /** Satellite infrared products, which share the cloud brightness filter. */
 export const INFRARED_PRODUCTS = Object.freeze([
   'clouds',
@@ -68,6 +71,7 @@ export function validateWeatherSnapshot(value, product) {
 /** Largest whole-extent image per product; also the proxy default size. */
 export const WEATHER_IMAGE_SIZES = Object.freeze({
   radar: Object.freeze({ width: 4096, height: 2048 }),
+  'radar-europe': Object.freeze({ width: 4096, height: 2048 }),
   'clouds-regional': Object.freeze({ width: 4096, height: 2048 }),
   'clouds-europe': Object.freeze({ width: 4096, height: 2048 }),
   clouds: Object.freeze({ width: 2048, height: 1024 }),

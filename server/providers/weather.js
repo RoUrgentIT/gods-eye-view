@@ -1,5 +1,6 @@
 import { readResponseTextCapped } from './common/http.js';
 import { readWindBody as readBytesCapped } from '../../src/sources/windBody.js';
+import { createOperaRenderer } from './opera.js';
 
 const BASE = 'https://nowcoast.noaa.gov/geoserver/observations/';
 const EUMETVIEW = 'https://view.eumetsat.int/geoserver/';
@@ -83,6 +84,18 @@ const PRODUCTS = Object.freeze({
     attribution: 'Contains modified EUMETSAT Meteosat data',
     attributionYear: true,
     metadataTtlMs: 300_000,
+    image: Object.freeze({ width: 4096, height: 2048 }),
+  }),
+  // EUMETNET OPERA has no map service: frames are GeoTIFFs drawn by opera.js.
+  'radar-europe': Object.freeze({
+    renderer: 'opera',
+    source: 'EUMETNET OPERA',
+    title: 'European radar reflectivity',
+    coverage:
+      'EUMETNET OPERA composite of national weather radars across Europe, including Romania; gaps do not establish absence of precipitation.',
+    description:
+      'Observed maximum radar reflectivity (dBZ) from the OPERA composite, 1 km and 5-minute updates; not a rainfall forecast.',
+    attribution: 'EUMETNET OPERA',
     image: Object.freeze({ width: 4096, height: 2048 }),
   }),
 });
@@ -299,11 +312,12 @@ function validatePng(bytes, width, height) {
   return buffer;
 }
 
-/** Fixed NOAA and EUMETSAT observed-weather metadata and WMS tiles; no client-supplied destinations. */
+/** Fixed NOAA, EUMETSAT and EUMETNET observed-weather metadata and tiles; no client-supplied destinations. */
 export function weatherProxy({
   fetchImpl = fetch,
   now = () => Date.now(),
   timeoutMs = 12_000,
+  opera = createOperaRenderer({ fetchImpl, now }),
 } = {}) {
   const metadata = new Map();
   const attempts = new Map();
@@ -407,23 +421,33 @@ export function weatherProxy({
     if (old && now() - old.fetchedAt < (spec.metadataTtlMs ?? 120_000))
       return { ...old, stale: false };
     try {
-      const endpoint = productEndpoint(spec);
+      const endpoint = spec.renderer ?? productEndpoint(spec);
       if (
         now() - (attempts.get(product) ?? -Infinity) < 30_000 &&
         !operations.has(`metadata:${endpoint}`)
       )
         throw failure('weather_upstream_unavailable');
       attempts.set(product, now());
-      const url = `${endpoint}?service=WMS&version=1.3.0&request=GetCapabilities`;
-      const xml = await shared(
-        `metadata:${endpoint}`,
-        (activeSignal) => upstream(url, activeSignal),
-        signal,
-      );
-      const value = {
-        ...parseWeatherCapabilities(xml, product, now()),
-        fetchedAt: now(),
-      };
+      const parsed = spec.renderer
+        ? await shared(
+            `metadata:${endpoint}`,
+            (activeSignal) => opera.metadata(activeSignal),
+            signal,
+          )
+        : parseWeatherCapabilities(
+            await shared(
+              `metadata:${endpoint}`,
+              (activeSignal) =>
+                upstream(
+                  `${endpoint}?service=WMS&version=1.3.0&request=GetCapabilities`,
+                  activeSignal,
+                ),
+              signal,
+            ),
+            product,
+            now(),
+          );
+      const value = { ...parsed, fetchedAt: now() };
       metadata.set(product, value);
       return { ...value, stale: false };
     } catch (error) {
@@ -613,27 +637,36 @@ export function weatherProxy({
         if (now() - (tileFailures.get(key) ?? -Infinity) < 30_000)
           throw failure('weather_upstream_unavailable');
         const spec = PRODUCTS[product];
-        const upstreamUrl = new URL(productEndpoint(spec));
-        upstreamUrl.search = new URLSearchParams({
-          service: 'WMS',
-          version: '1.1.1',
-          request: 'GetMap',
-          layers: spec.layer,
-          styles: spec.style,
-          srs: 'EPSG:4326',
-          bbox: bbox.join(','),
-          width: String(imageShape.width),
-          height: String(imageShape.height),
-          format: 'image/png',
-          transparent: 'true',
-          time,
-        }).toString();
+        // A rendered product draws its own frame; a WMS product asks GetMap.
+        const draw = spec.renderer
+          ? (signal) =>
+              opera.render(
+                time,
+                bbox,
+                imageShape.width,
+                imageShape.height,
+                signal,
+              )
+          : (signal) => {
+              const upstreamUrl = new URL(productEndpoint(spec));
+              upstreamUrl.search = new URLSearchParams({
+                service: 'WMS',
+                version: '1.1.1',
+                request: 'GetMap',
+                layers: spec.layer,
+                styles: spec.style,
+                srs: 'EPSG:4326',
+                bbox: bbox.join(','),
+                width: String(imageShape.width),
+                height: String(imageShape.height),
+                format: 'image/png',
+                transparent: 'true',
+                time,
+              }).toString();
+              return upstream(upstreamUrl.href, signal, imageShape);
+            };
         try {
-          const bytes = await shared(
-            `image:${key}`,
-            (signal) => upstream(upstreamUrl.href, signal, imageShape),
-            controller.signal,
-          );
+          const bytes = await shared(`image:${key}`, draw, controller.signal);
           rememberTile(key, bytes);
           cached = { bytes };
         } catch (error) {

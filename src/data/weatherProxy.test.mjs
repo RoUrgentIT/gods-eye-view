@@ -1306,3 +1306,46 @@ test('EUMETSAT products use fixed EUMETView endpoints, layers and a dated CC BY 
     400,
   );
 });
+
+test('the European radar product is drawn by the OPERA renderer, never by WMS', async () => {
+  const OPERA_TIME = '2026-09-16T02:05:00.000Z';
+  const calls = [];
+  const fetched = [];
+  const { request } = install({
+    fetchImpl: async (url) => {
+      fetched.push(url);
+      return new Response('unexpected', { status: 500 });
+    },
+    opera: {
+      metadata: async () => ({
+        bounds: { west: -39.5, south: 31.75, east: 57.5, north: 74 },
+        times: [OPERA_TIME],
+        allowedTimes: [OPERA_TIME],
+      }),
+      render: async (time, bbox, width, height) => {
+        calls.push({ time, bbox, width, height });
+        return png(width, height);
+      },
+    },
+  });
+  const manifest = body(await request('/manifest?product=radar-europe'));
+  assert.equal(manifest.source, 'EUMETNET OPERA');
+  assert.equal(manifest.attribution, 'EUMETNET OPERA');
+  assert.equal(manifest.latest, OPERA_TIME);
+  const response = await request(
+    tile({ product: 'radar-europe', time: OPERA_TIME, z: 3, x: 9, y: 1 }),
+  );
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(calls, [
+    { time: OPERA_TIME, bbox: [22.5, 45, 45, 67.5], width: 256, height: 256 },
+  ]);
+  assert.deepEqual(fetched, []);
+  assert.equal(
+    (
+      await request(
+        tile({ product: 'radar-europe', time: '2026-09-16T02:00:00.000Z' }),
+      )
+    ).statusCode,
+    400,
+  );
+});

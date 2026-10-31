@@ -17,6 +17,7 @@ import { toBase64 } from '../results.js';
 /** Map names offered to callers, and the weather products behind them. */
 const MAPS = {
   radar: 'radar',
+  europe_radar: 'radar-europe',
   satellite: 'clouds-regional',
   global_satellite: 'clouds',
   europe_satellite: 'clouds-europe',
@@ -26,6 +27,7 @@ const MAPS = {
 /** The app layer that shows each map. */
 const MAP_LAYERS = {
   radar: 'weather-radar',
+  europe_radar: 'weather-radar',
   satellite: 'weather-satellite',
   global_satellite: 'weather-satellite',
   europe_satellite: 'weather-satellite',
@@ -91,7 +93,7 @@ export const getWeatherMap = defineTool({
   title: 'Weather map',
   description:
     'The latest observed weather map image over an area: NOAA precipitation ' +
-    'radar (contiguous US), NOAA regional or global infrared satellite clouds, ' +
+    'radar (contiguous US), EUMETNET OPERA radar (Europe), NOAA regional or global infrared satellite clouds, ' +
     'NOAA lightning density (the Americas), or EUMETSAT Meteosat infrared ' +
     'clouds and lightning flash area (Europe and Africa). Returns the image itself.',
   inputSchema: {

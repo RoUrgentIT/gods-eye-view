@@ -10,6 +10,7 @@ import {
 import {
   INFRARED_PRODUCTS,
   LIGHTNING_PRODUCTS,
+  RADAR_PRODUCTS,
   isEumetsatProduct,
 } from './source.js';
 import { formatUtcDayMonth, t, msg } from '../../i18n/index.js';
@@ -295,9 +296,11 @@ export function createWeatherLayer({
         : 'Satellite clouds',
     icon: radar ? '◉' : lightning ? 'ϟ' : '☁',
     get source() {
-      return isEumetsatProduct(product)
-        ? msg('EUMETSAT EUMETView · OBSERVED')
-        : msg('NOAA nowCOAST · OBSERVED');
+      return product === 'radar-europe'
+        ? msg('EUMETNET OPERA · OBSERVED')
+        : isEumetsatProduct(product)
+          ? msg('EUMETSAT EUMETView · OBSERVED')
+          : msg('NOAA nowCOAST · OBSERVED');
     },
     updateInterval: lightning ? 600_000 : 120_000,
     init(nextViewer) {
@@ -460,7 +463,7 @@ export function createWeatherLayer({
         ? INFRARED_PRODUCTS
         : lightning
           ? LIGHTNING_PRODUCTS
-          : [];
+          : RADAR_PRODUCTS;
       if (regions.includes(params.product) && params.product !== product) {
         product = params.product;
         ++generation;
@@ -542,7 +545,7 @@ export function createWeatherLayer({
     },
     getParams() {
       return radar
-        ? { opacity }
+        ? { product, opacity }
         : satellite
           ? { product, opacity, infrared }
           : { product, opacity };
@@ -659,17 +662,20 @@ export function createWeatherLayer({
         : [t('Observation: unavailable'), loading ? t('loading') : '']
             .filter(Boolean)
             .join(' · ');
-      const infoCoverage = radar
-        ? t('Contiguous US · gaps ≠ no rain')
-        : product === 'lightning-europe'
-          ? `${t('Europe + Africa · optical flashes, not ground strikes')}\n${t('Color: flashes / 5 min')}`
-          : lightning
-            ? `${t('Americas + Pacific · not individual strikes')}\n${t('Color: strikes/km²/min ×10³')}`
-            : product === 'clouds'
-              ? t('60°S–60°N · typically 2–3 h delayed')
-              : product === 'clouds-europe'
-                ? t('Europe + Africa · 70°S–70°N · infrared imagery')
-                : t('North America · infrared imagery');
+      const infoCoverage =
+        product === 'radar-europe'
+          ? t('Europe · OPERA composite · gaps ≠ no rain')
+          : radar
+            ? t('Contiguous US · gaps ≠ no rain')
+            : product === 'lightning-europe'
+              ? `${t('Europe + Africa · optical flashes, not ground strikes')}\n${t('Color: flashes / 5 min')}`
+              : lightning
+                ? `${t('Americas + Pacific · not individual strikes')}\n${t('Color: strikes/km²/min ×10³')}`
+                : product === 'clouds'
+                  ? t('60°S–60°N · typically 2–3 h delayed')
+                  : product === 'clouds-europe'
+                    ? t('Europe + Africa · 70°S–70°N · infrared imagery')
+                    : t('North America · infrared imagery');
       const infoMotion = motion?.matches
         ? clock
           ? t('Reduced motion · history playback unavailable')
@@ -678,22 +684,28 @@ export function createWeatherLayer({
       const controls = {
         readout: true,
         summary: {
-          label: radar
-            ? t('Rain radar · US')
-            : product === 'lightning-europe'
-              ? t('Lightning flash area · 5 min')
-              : lightning
-                ? t('Lightning density · 15 min')
-                : t('Satellite clouds'),
-          coverage: radar
-            ? 'CONUS'
-            : isEumetsatProduct(product)
-              ? t('Europe + Africa')
-              : lightning
-                ? t('Americas + Pacific')
-                : product === 'clouds'
-                  ? t('Global · 60°S–60°N')
-                  : t('North America'),
+          label:
+            product === 'radar-europe'
+              ? t('Rain radar · Europe')
+              : radar
+                ? t('Rain radar · US')
+                : product === 'lightning-europe'
+                  ? t('Lightning flash area · 5 min')
+                  : lightning
+                    ? t('Lightning density · 15 min')
+                    : t('Satellite clouds'),
+          coverage:
+            product === 'radar-europe'
+              ? t('Europe · OPERA')
+              : radar
+                ? 'CONUS'
+                : isEumetsatProduct(product)
+                  ? t('Europe + Africa')
+                  : lightning
+                    ? t('Americas + Pacific')
+                    : product === 'clouds'
+                      ? t('Global · 60°S–60°N')
+                      : t('North America'),
           shownTime: time,
           maxGapMinutes: maxGap() / 60_000,
           detail,
@@ -739,6 +751,25 @@ export function createWeatherLayer({
                       : t(
                           'GOES regional clouds; approximately 5-minute updates',
                         ),
+              }))
+            : []),
+          ...(radar
+            ? [
+                ['radar', 'CONUS'],
+                ['radar-europe', t('Europe · OPERA')],
+              ].map(([value, label]) => ({
+                id: value,
+                label,
+                active: product === value,
+                params: { product: value },
+                title:
+                  value === 'radar'
+                    ? t(
+                        'NOAA MRMS radar over the contiguous United States; about 4-minute updates',
+                      )
+                    : t(
+                        'EUMETNET OPERA composite of European national radars; 5-minute updates',
+                      ),
               }))
             : []),
           ...(lightning
@@ -791,11 +822,12 @@ export function createWeatherLayer({
           })),
           {
             id: 'coverage',
-            label: radar
-              ? t('View US radar')
-              : product === 'lightning'
-                ? t('View Americas & Pacific')
-                : t('View coverage'),
+            label:
+              product === 'radar'
+                ? t('View US radar')
+                : product === 'lightning'
+                  ? t('View Americas & Pacific')
+                  : t('View coverage'),
             disabled: !manifest || !runNavigation,
             params: { focus: true },
           },
@@ -841,16 +873,20 @@ export function createWeatherLayer({
                 ? t(
                     'NOAA/NWS 15-minute lightning density derived from Vaisala NLDN/GLD360. Coverage 110°E across the Pacific/Americas to 0°, 25°S–80°N. Not a live strike count, global coverage or a safety warning.',
                   )
-                : radar
+                : product === 'radar-europe'
                   ? t(
-                      'NOAA MRMS radar echoes indicate precipitation patterns, not rain rate, a storm warning or a future forecast. Native source approximately 1 km; display is limited to level 6. Frames use exact advertised observation times.',
+                      'EUMETNET OPERA composite of national weather radars, including the seven ANM radars over Romania: column-maximum reflectivity on a 1 km grid every 5 minutes. Echoes indicate precipitation patterns, not rain rate, a storm warning or a forecast; the colour scale is the same dBZ scale as the US radar.',
                     )
-                  : t(
-                      'GOES-19/18 longwave infrared Band 14 regional; NESDIS global longwave mosaic. Clouds only dims everything but bright, cold cloud tops; a brightness filter, not a cloud mask. Coverage and freshness differ by region.',
-                    ),
+                  : radar
+                    ? t(
+                        'NOAA MRMS radar echoes indicate precipitation patterns, not rain rate, a storm warning or a future forecast. Native source approximately 1 km; display is limited to level 6. Frames use exact advertised observation times.',
+                      )
+                    : t(
+                        'GOES-19/18 longwave infrared Band 14 regional; NESDIS global longwave mosaic. Clouds only dims everything but bright, cold cloud tops; a brightness filter, not a cloud mask. Coverage and freshness differ by region.',
+                      ),
       };
       controls.summary.settings = [
-        ...(lightning
+        ...(lightning || radar
           ? [
               {
                 id: 'region',
@@ -909,9 +945,12 @@ export function createWeatherLayer({
         loading,
         error: error || rendering?.getDiagnostics().error || null,
         stale: Boolean(manifest?.stale || observationDelayed()),
-        source: isEumetsatProduct(product)
-          ? 'EUMETSAT EUMETView'
-          : 'NOAA nowCOAST',
+        source:
+          product === 'radar-europe'
+            ? 'EUMETNET OPERA'
+            : isEumetsatProduct(product)
+              ? 'EUMETSAT EUMETView'
+              : 'NOAA nowCOAST',
         observedAt: shownTime(),
       };
     },

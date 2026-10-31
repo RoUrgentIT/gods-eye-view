@@ -416,6 +416,10 @@ export const DATA_CREDITS = [
     html: 'Meteosat infrared and lightning flash area: contains modified <a href="https://www.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a> Meteosat data via <a href="https://view.eumetsat.int/" target="_blank" rel="noopener">EUMETView</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Tiled, reprojected to EPSG:4326 and filtered for display.',
   },
   {
+    key: 'weather-opera',
+    html: 'European radar: <a href="https://www.eumetnet.eu/activities/observations-programme/current-activities/opera/" target="_blank" rel="noopener">EUMETNET OPERA</a> composite via MeteoGate open radar data, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Reprojected and coloured for display.',
+  },
+  {
     key: 'weather-cyclones',
     html: 'Cyclone advisories: <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NOAA/NWS NHC / CPHC</a> · Atlantic and eastern/central North Pacific. Forecast center uncertainty, not storm size.',
   },

@@ -115,6 +115,7 @@ const SOURCE_LABEL_KEYS = new Map(
     msg('GFS / ECMWF IFS · FORECAST'),
     msg('NOAA nowCOAST · OBSERVED'),
     msg('EUMETSAT EUMETView · OBSERVED'),
+    msg('EUMETNET OPERA · OBSERVED'),
     msg('NASA FIRMS · LIVE'),
     msg('OSM routing'),
     msg('Mapped camera locations'),

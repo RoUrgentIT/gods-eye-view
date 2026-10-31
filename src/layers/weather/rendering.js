@@ -257,7 +257,7 @@ function createGlobeRendering({
         kind,
         priority: LIGHTNING_PRODUCTS.includes(snapshot.product)
           ? 3
-          : snapshot.product === 'radar'
+          : snapshot.product === 'radar' || snapshot.product === 'radar-europe'
             ? 2
             : 1,
         product: snapshot.product,
@@ -349,11 +349,13 @@ function createGlobeRendering({
         const credit = new cesium.Credit(
           isEumetsatProduct(snapshot.product)
             ? `EUMETSAT EUMETView · ${snapshot.attribution}`
-            : snapshot.product === 'lightning'
-              ? 'NOAA/NWS lightning density · derived from Vaisala NLDN/GLD360'
-              : snapshot.product === 'radar'
-                ? 'NOAA nowCOAST · NWS/OAR MRMS'
-                : 'NOAA nowCOAST · NESDIS GOES / global satellite partners',
+            : snapshot.product === 'radar-europe'
+              ? 'EUMETNET OPERA · CC BY 4.0'
+              : snapshot.product === 'lightning'
+                ? 'NOAA/NWS lightning density · derived from Vaisala NLDN/GLD360'
+                : snapshot.product === 'radar'
+                  ? 'NOAA nowCOAST · NWS/OAR MRMS'
+                  : 'NOAA nowCOAST · NESDIS GOES / global satellite partners',
           false,
         );
         const provider = global
