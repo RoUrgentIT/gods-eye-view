@@ -1,5 +1,10 @@
 import { readResponseJsonCapped } from '../../sources/httpBody.js';
-import { normalizeAqhiStations, normalizeAqhiObservations } from './model.js';
+import {
+  normalizeAqhiStations,
+  normalizeAqhiObservations,
+  normalizeEeaStations,
+  normalizeEeaReadings,
+} from './model.js';
 
 // A portable export (package.json): no i18n here. Failures stay English data;
 // the Layers panel and the Weather card show them translated.
@@ -105,6 +110,163 @@ export function createEcccAirQualitySource({
       if (!readings)
         throw new Error(msg('Malformed AQHI observation response'));
       return readings;
+    },
+  };
+}
+
+const EEA_ROOT =
+  'https://dis2datalake.blob.core.windows.net/airquality-derivated/AQI-noRunningMeans';
+/** The station catalogue is about 1.8 MB for all of Europe. */
+const EEA_MAX_CATALOG_BYTES = 4 * 1024 * 1024;
+/** One hourly index map for all of Europe is about 160 KB. */
+const EEA_MAX_MAP_BYTES = 2 * 1024 * 1024;
+const HOUR_MS = 60 * 60 * 1000;
+/**
+ * Hours back to try, newest first. The EEA viewer opens three hours back:
+ * late station data keeps rewriting the newest hours, and future hours hold
+ * model forecasts rather than measurements.
+ */
+const EEA_HOURS_BACK = Object.freeze([3, 4]);
+
+/**
+ * European Air Quality Index station data from the EEA, the files its own
+ * airindex.eea.europa.eu viewer reads (CC BY 4.0). One catalogue, refreshed
+ * twice a day, plus one hourly index map per refresh.
+ *
+ * @param {object} [options]
+ * @param {Function} [options.fetchImpl] - Injected fetch, for tests.
+ * @param {() => number} [options.now] - Clock seam, for tests.
+ * @param {number} [options.timeoutMs=20000] - Deadline for each request.
+ * @returns {{getSnapshot: Function}}
+ */
+export function createEeaAirQualitySource({
+  fetchImpl = (...args) => globalThis.fetch(...args),
+  now = () => Date.now(),
+  timeoutMs = 20_000,
+} = {}) {
+  let stations = new Map();
+  let stationsFetchedAt = 0;
+
+  const getJson = async (url, maxBytes, signal) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal.reason);
+    signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(
+      () => controller.abort(new Error(msg('EEA request timed out'))),
+      timeoutMs,
+    );
+    try {
+      signal?.throwIfAborted();
+      const response = await fetchImpl(url, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        await response.body?.cancel?.();
+        return { status: response.status, payload: null };
+      }
+      return {
+        status: response.status,
+        payload: await readResponseJsonCapped(
+          response,
+          maxBytes,
+          controller.signal,
+        ),
+      };
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+    }
+  };
+
+  const refreshStations = async (signal) => {
+    const index = await getJson(
+      `${EEA_ROOT}/content/index.json`,
+      64 * 1024,
+      signal,
+    );
+    if (!index.payload) throw new Error(`EEA HTTP ${index.status}`);
+    const files = Array.isArray(index.payload.contents)
+      ? index.payload.contents.filter((name) =>
+          /^raw_stations\.json\.\d{8}$/.test(String(name)),
+        )
+      : [];
+    // YYMMDDHH suffixes sort chronologically.
+    const newest = files.sort().at(-1);
+    if (!newest) throw new Error(msg('Malformed EEA station index'));
+    const catalogue = await getJson(
+      `${EEA_ROOT}/content/${newest}`,
+      EEA_MAX_CATALOG_BYTES,
+      signal,
+    );
+    if (!catalogue.payload) throw new Error(`EEA HTTP ${catalogue.status}`);
+    const next = normalizeEeaStations(catalogue.payload);
+    if (!next) throw new Error(msg('Malformed EEA station response'));
+    return next;
+  };
+
+  return {
+    async getSnapshot({ signal } = {}) {
+      const clock = now();
+      if (stations.size === 0 || clock - stationsFetchedAt > STATION_TTL_MS) {
+        const next = await refreshStations(signal);
+        // An empty refresh must not wipe a good catalogue.
+        if (next.size > 0) {
+          stations = next;
+          stationsFetchedAt = clock;
+        }
+      }
+      if (stations.size === 0)
+        throw new Error(msg('No EEA stations available'));
+      let lastStatus = null;
+      for (const back of EEA_HOURS_BACK) {
+        const hour = new Date(
+          Math.floor((clock - back * HOUR_MS) / HOUR_MS) * HOUR_MS,
+        ).toISOString();
+        const result = await getJson(
+          `${EEA_ROOT}/map/${hour.slice(0, 13)}.json`,
+          EEA_MAX_MAP_BYTES,
+          signal,
+        );
+        if (!result.payload) {
+          lastStatus = result.status;
+          continue;
+        }
+        const readings = normalizeEeaReadings(
+          result.payload,
+          stations,
+          hour,
+          clock,
+        );
+        if (!readings) throw new Error(msg('Malformed EEA index map'));
+        return readings;
+      }
+      throw new Error(`EEA HTTP ${lastStatus}`);
+    },
+  };
+}
+
+/**
+ * One air-quality source over the registered networks. `provider` picks the
+ * network; the layer shows one at a time because the indices do not share a
+ * scale.
+ *
+ * @param {object} [providers]
+ * @returns {{getSnapshot: Function}}
+ */
+export function createAirQualitySource({
+  providers = {
+    eccc: createEcccAirQualitySource(),
+    eea: createEeaAirQualitySource(),
+  },
+} = {}) {
+  return {
+    async getSnapshot({ provider = 'eccc', signal } = {}) {
+      const source = Object.hasOwn(providers, provider)
+        ? providers[provider]
+        : null;
+      if (!source) throw new Error(msg('Unknown air-quality provider'));
+      return source.getSnapshot({ signal });
     },
   };
 }

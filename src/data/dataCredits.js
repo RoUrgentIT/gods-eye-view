@@ -170,6 +170,10 @@ export const DATA_CREDITS = [
   OSM_CREDIT,
   OPENMAPTILES_CREDIT,
   {
+    key: 'eea-eaqi',
+    html: 'Air quality (Europe): Source: <a href="https://www.eea.europa.eu/" target="_blank" rel="noopener">European Environment Agency (EEA)</a>, European Air Quality Index up-to-date station data, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Unvalidated measurements; no endorsement implied.',
+  },
+  {
     key: 'eccc-aqhi',
     html:
       'Air quality (AQHI): Environment and Climate Change Canada — MSC GeoMet ' +

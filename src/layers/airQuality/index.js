@@ -2,7 +2,6 @@ import * as Cesium from 'cesium';
 import { msg, t, tn } from '../../i18n/index.js';
 import { translateFeedError } from '../../ui/statusText.js';
 import {
-  AIR_QUALITY_BANDS,
   AIR_QUALITY_OVERLAY_SOURCE_ID,
   AIR_QUALITY_OVERLAY_COHORT_LIMIT,
   AIR_QUALITY_OVERLAY_COLLISION_CAPACITY,
@@ -15,10 +14,18 @@ import {
   selectAirQualityOverlayCohort,
 } from './model.js';
 export * from './model.js';
-export { createEcccAirQualitySource } from './source.js';
+export {
+  createEcccAirQualitySource,
+  createEeaAirQualitySource,
+  createAirQualitySource,
+} from './source.js';
 
-/** Station markers are a point reading, not an extent. */
-const STATION_MARKER_RADIUS_M = 6_000;
+/**
+ * Station markers are a point reading, not an extent, so they keep a fixed
+ * screen size. A ground circle sized for Canada's sparse network (6 km) merged
+ * dense European city networks into one opaque blob over the map.
+ */
+const STATION_MARKER_PX = 11;
 /** Readings listed in the readout card. */
 const READOUT_LIMIT = 5;
 
@@ -35,6 +42,7 @@ export function createAirQualityLayer({ source, overlayHost } = {}) {
   let _lastUpdate = null;
   let _lastError = null;
   let _enabled = false;
+  let _provider = 'eccc';
   let rowControlsListener = null;
 
   const notify = () => rowControlsListener?.();
@@ -56,7 +64,9 @@ export function createAirQualityLayer({ source, overlayHost } = {}) {
     id: 'air-quality',
     name: 'Air quality',
     icon: '◍',
-    source: 'ECCC MSC GeoMet',
+    get source() {
+      return _provider === 'eea' ? 'EEA up-to-date data' : 'ECCC MSC GeoMet';
+    },
     updateInterval: 1_200_000,
 
     init(viewer) {
@@ -97,7 +107,10 @@ export function createAirQualityLayer({ source, overlayHost } = {}) {
       const request = new AbortController();
       _request = request;
       try {
-        const readings = await source.getSnapshot({ signal: request.signal });
+        const readings = await source.getSnapshot({
+          provider: _provider,
+          signal: request.signal,
+        });
         // A superseded or aborted request must not touch the scene, and neither
         // must one that lands after the layer was switched off.
         if (request.signal.aborted || _request !== request || !_enabled)
@@ -135,16 +148,13 @@ export function createAirQualityLayer({ source, overlayHost } = {}) {
           new Cesium.Entity({
             id: `air-quality:${reading.id}`,
             position,
-            ellipse: {
-              // Static axes, as in the earthquake layer: a per-frame axis
-              // re-tessellates the clamped ground primitive every frame.
-              semiMajorAxis: STATION_MARKER_RADIUS_M,
-              semiMinorAxis: STATION_MARKER_RADIUS_M,
-              material: new Cesium.ColorMaterialProperty(color.withAlpha(0.35)),
-              outline: true,
-              outlineColor: color.withAlpha(0.9),
-              outlineWidth: 2,
+            point: {
+              pixelSize: STATION_MARKER_PX,
+              color: color.withAlpha(0.85),
+              outlineColor: Cesium.Color.BLACK.withAlpha(0.7),
+              outlineWidth: 1.5,
               heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
             properties: {
               provider: reading.provider,
@@ -209,8 +219,46 @@ export function createAirQualityLayer({ source, overlayHost } = {}) {
      * `readout: true` renders the toggle and source line only; the card owns
      * the rest. Coverage is stated plainly because this layer is not global.
      */
+    getParams() {
+      return { provider: _provider };
+    },
+
+    /** Switch network. Readings on another index never stay on screen. */
+    setParams(params = {}) {
+      if (
+        !Object.hasOwn(AIR_QUALITY_PROVIDERS, params.provider ?? '') ||
+        params.provider === _provider
+      )
+        return;
+      _provider = params.provider;
+      _request?.abort();
+      _request = null;
+      _readings = [];
+      _count = 0;
+      _lastUpdate = null;
+      _lastError = null;
+      this._render();
+      notify();
+      if (_enabled) void this.update();
+    },
+
     getRowControls() {
-      const provider = AIR_QUALITY_PROVIDERS.eccc;
+      const provider = AIR_QUALITY_PROVIDERS[_provider];
+      const regions = [
+        ['eccc', t('Canada')],
+        ['eea', t('Europe')],
+      ].map(([id, label]) => ({
+        id,
+        label,
+        active: _provider === id,
+        params: { provider: id },
+        title:
+          id === 'eea'
+            ? t(
+                'European Environment Agency stations; hourly EAQI, about 3 hours back',
+              )
+            : t('Environment and Climate Change Canada stations; hourly AQHI'),
+      }));
       const inView = readingsInView(_readings, viewRectangle(), READOUT_LIMIT);
       const newest = _readings.reduce(
         (max, reading) => Math.max(max, reading.observedMs || 0),
@@ -238,8 +286,10 @@ export function createAirQualityLayer({ source, overlayHost } = {}) {
                   '{count} stations reporting',
                 ),
           units: provider.scale,
+          settings: [{ id: 'region', label: t('REGION'), chips: regions }],
         },
-        legend: AIR_QUALITY_BANDS.map((band) => ({
+        chips: regions,
+        legend: provider.legend.map((band) => ({
           color: band.color,
           label: t(band.label),
         })),
@@ -250,7 +300,9 @@ export function createAirQualityLayer({ source, overlayHost } = {}) {
             id: reading.id,
             ordinal: index + 1,
             lead: `${reading.scale} ${reading.label}`,
-            text: `${reading.name} · ${t(reading.risk)}`,
+            text: reading.note
+              ? `${reading.name} · ${t(reading.risk)} · ${t(reading.note)}`
+              : `${reading.name} · ${t(reading.risk)}`,
             accent: reading.color,
           })),
         },
@@ -287,7 +339,13 @@ export function createAirQualityLayer({ source, overlayHost } = {}) {
         error: _lastError,
         observedAt: newestObservation(_readings),
         // Only a completed refresh can be stale; before one there is no feed.
-        stale: _lastUpdate !== null && readingsAreStale(_readings),
+        stale:
+          _lastUpdate !== null &&
+          readingsAreStale(
+            _readings,
+            Date.now(),
+            AIR_QUALITY_PROVIDERS[_provider].staleAfterMs,
+          ),
       };
     },
   };

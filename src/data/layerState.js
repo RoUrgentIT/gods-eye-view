@@ -298,6 +298,12 @@ function satelliteFilterOption() {
 }
 
 const OPTION_GROUPS = Object.freeze({
+  'air-quality': Object.freeze([
+    enumOption('provider', 'p', 'eccc', ['eccc', 'eea'], {
+      eccc: 'c',
+      eea: 'e',
+    }),
+  ]),
   traffic: Object.freeze([
     enumOption('roadMode', 'r', null, ['tomtom', 'osm', 'hybrid'], {
       tomtom: 't',
@@ -568,7 +574,8 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({
     id: 'air-quality',
     token: '4',
-    disposition: 'enabled-only',
+    disposition: 'enabled+options',
+    optionOwner: 'air-quality',
   }),
   Object.freeze({
     id: 'ais-live-vessels',

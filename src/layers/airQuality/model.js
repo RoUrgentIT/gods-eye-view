@@ -6,14 +6,14 @@
  *
  * Air-quality indices are not interchangeable numbers. Canada's AQHI runs 1 to
  * 10+ on health risk; the US AQI runs 0 to 500 on concentration breakpoints;
- * Europe's EAQI is a five-step category. A reading is therefore carried as
+ * Europe's EAQI is a six-level category. A reading is therefore carried as
  * `{ provider, scale, value, band }` — who measured it, which index it is, the
  * value on that index's own terms, and the band it falls in — so a second
  * network can be added without retrofitting a shared numeric meaning that does
  * not exist.
  *
- * Only ECCC's AQHI is implemented here; `AIR_QUALITY_PROVIDERS` is the seam a
- * later provider registers against.
+ * ECCC's AQHI (Canada) and the EEA's European Air Quality Index (Europe) are
+ * registered in `AIR_QUALITY_PROVIDERS`; each keeps its own bands and legend.
  */
 // A portable export (package.json): no i18n here. The labels stay English data;
 // the Weather card (index.js) shows them translated.
@@ -47,7 +47,52 @@ export const AIR_QUALITY_BANDS = Object.freeze([
   }),
 ]);
 
-const BAND_BY_ID = new Map(AIR_QUALITY_BANDS.map((band) => [band.id, band]));
+/**
+ * The European Air Quality Index's six published levels, with the EEA's own
+ * descriptors and colours (airindex.eea.europa.eu). Not a mapping of AQHI.
+ */
+export const EAQI_BANDS = Object.freeze([
+  Object.freeze({
+    id: 'eaqi-1',
+    label: msg('Good'),
+    risk: msg('Good air quality'),
+    color: '#50f0e6',
+  }),
+  Object.freeze({
+    id: 'eaqi-2',
+    label: msg('Fair'),
+    risk: msg('Fair air quality'),
+    color: '#50ccaa',
+  }),
+  Object.freeze({
+    id: 'eaqi-3',
+    label: msg('Moderate'),
+    risk: msg('Moderate air quality'),
+    color: '#f0e641',
+  }),
+  Object.freeze({
+    id: 'eaqi-4',
+    label: msg('Poor'),
+    risk: msg('Poor air quality'),
+    color: '#ff5050',
+  }),
+  Object.freeze({
+    id: 'eaqi-5',
+    label: msg('Very poor'),
+    risk: msg('Very poor air quality'),
+    color: '#960032',
+  }),
+  Object.freeze({
+    id: 'eaqi-6',
+    label: msg('Extremely poor'),
+    risk: msg('Extremely poor air quality'),
+    color: '#7d2181',
+  }),
+]);
+
+const BAND_BY_ID = new Map(
+  [...AIR_QUALITY_BANDS, ...EAQI_BANDS].map((band) => [band.id, band]),
+);
 
 /** Colour used when a station reports no usable reading. */
 export const AIR_QUALITY_UNKNOWN_COLOR = '#6b7785';
@@ -96,12 +141,16 @@ export function newestObservation(readings) {
  * @param {number} [now=Date.now()]
  * @returns {boolean}
  */
-export function readingsAreStale(readings, now = Date.now()) {
+export function readingsAreStale(
+  readings,
+  now = Date.now(),
+  staleAfterMs = STALE_AFTER_MS,
+) {
   const newest = newestObservation(readings);
   // No current observation at all — every row was dropped as too old or
   // unusable — is the stalest a feed can be, not a nominal one.
   if (newest === null) return true;
-  return now - newest > STALE_AFTER_MS;
+  return now - newest > staleAfterMs;
 }
 
 /**
@@ -115,6 +164,8 @@ export const AIR_QUALITY_PROVIDERS = Object.freeze({
     label: msg('Air quality'),
     network: 'Environment and Climate Change Canada',
     coverage: msg('Canada only · ECCC AQHI network'),
+    legend: AIR_QUALITY_BANDS,
+    staleAfterMs: STALE_AFTER_MS,
     /** ECCC's published band thresholds, evaluated in order. */
     bands: Object.freeze([
       Object.freeze({ id: 'low', max: 3 }),
@@ -122,6 +173,29 @@ export const AIR_QUALITY_PROVIDERS = Object.freeze({
       Object.freeze({ id: 'high', max: 10 }),
       Object.freeze({ id: 'very-high', max: Infinity }),
     ]),
+  }),
+  eea: Object.freeze({
+    id: 'eea',
+    scale: 'EAQI',
+    label: msg('Air quality'),
+    network: 'European Environment Agency',
+    coverage: msg('Europe · EEA up-to-date station data'),
+    legend: EAQI_BANDS,
+    /**
+     * The EEA's own viewer opens three hours back, because late station data
+     * keeps rewriting recent hours; a reading four hours old is still the
+     * expected publication, five is not.
+     */
+    staleAfterMs: 5 * 60 * 60 * 1000,
+    /** The level is the whole part of the index: 1 Good to 6 Extremely poor. */
+    bands: Object.freeze(
+      EAQI_BANDS.map((band, index) =>
+        Object.freeze({
+          id: band.id,
+          max: index === EAQI_BANDS.length - 1 ? Infinity : index + 1,
+        }),
+      ),
+    ),
   }),
 });
 
@@ -180,6 +254,23 @@ export function valueLabel(providerId, value) {
   if (!Number.isFinite(value)) return '--';
   if (providerId === 'eccc') return value > 10 ? '10+' : String(value);
   return String(value);
+}
+
+/**
+ * The published EAQI level for a raw EEA index: the whole part, 1 to 6.
+ *
+ * The EEA files carry a continuous index whose whole part is the level its
+ * viewer paints (`Math.floor`); 0 or below means the station has no index for
+ * the hour. Values past 6 stay "Extremely poor".
+ *
+ * @param {unknown} raw
+ * @returns {number|null}
+ */
+export function eaqiLevel(raw) {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  const level = Math.floor(raw);
+  if (level < 1) return null;
+  return Math.min(6, level);
 }
 
 /** Plain-language risk phrase for a band id. */
@@ -285,6 +376,117 @@ export function normalizeAqhiObservations(geojson, stations, now = Date.now()) {
     });
   }
   return [...newest.values()].sort(
+    (a, b) => b.value - a.value || a.stationId.localeCompare(b.stationId),
+  );
+}
+
+/** "POIANA STAMPEI" → "Poiana Stampei"; the EEA catalogue often shouts. */
+function titleCase(text) {
+  return text === text.toUpperCase()
+    ? text
+        .toLowerCase()
+        .replace(
+          /(^|[\s\-(/])(\p{L})/gu,
+          (_, gap, letter) => `${gap}${letter.toUpperCase()}`,
+        )
+    : text;
+}
+
+/**
+ * Validate the EEA station catalogue (`raw_stations.json.*`) into a code-keyed
+ * map. Atomic like the AQHI catalogue: a broken payload returns null, one
+ * unusable station is skipped.
+ *
+ * @param {unknown} list - Array of EEA station objects.
+ * @returns {Map<string, object>|null}
+ */
+export function normalizeEeaStations(list) {
+  if (!Array.isArray(list)) return null;
+  const stations = new Map();
+  for (const station of list) {
+    if (!station || typeof station !== 'object' || Array.isArray(station))
+      return null;
+    const id = String(station.code ?? '').trim();
+    // Number(null) is 0: an absent coordinate must not land in the Gulf of Guinea.
+    const lat = typeof station.lat === 'number' ? station.lat : NaN;
+    const lon = typeof station.lon === 'number' ? station.lon : NaN;
+    if (!/^[A-Z]{2}[0-9A-Z]{3,10}$/.test(id)) continue;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    const code = String(station.name ?? '').trim();
+    const place = titleCase(String(station.municipality ?? '').trim());
+    // Postcodes ("9020 Klagenfurt") do not help a reader find the station.
+    const town = place.replace(/^\d+\s+/, '');
+    const named = town && code.toLowerCase().includes(town.toLowerCase());
+    stations.set(id, {
+      id,
+      // Station names are often bare codes ("EM-3"); lead with the place,
+      // unless the name already carries it ("ZAGREB-1", "Klagenfurt Koschat").
+      name: named
+        ? titleCase(code)
+        : town && code
+          ? `${town} ${code}`
+          : town || code || id,
+      // Country code from the station code: the EEA's own grouping.
+      zone: id.slice(0, 2),
+      lat,
+      lon,
+    });
+  }
+  return stations;
+}
+
+/**
+ * Join one hourly EEA index map onto known stations.
+ *
+ * The map holds `CODE: index` and `CODE_cp: 1|2` pairs. `_cp` 2 means the
+ * station met the minimum pollutant set for a full index; 1 means a partial
+ * index from fewer pollutants, which the EEA viewer shows grey up to Moderate
+ * and only in colour when it is Poor or worse. That convention is kept here.
+ *
+ * @param {object} map - Parsed `map/YYYY-MM-DDTHH.json`.
+ * @param {Map<string, object>} stations - From normalizeEeaStations.
+ * @param {string} hour - ISO hour the map describes.
+ * @param {number} [now=Date.now()]
+ * @returns {Array<object>|null}
+ */
+export function normalizeEeaReadings(map, stations, hour, now = Date.now()) {
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return null;
+  if (!(stations instanceof Map)) return null;
+  const observedMs = Date.parse(hour);
+  if (!Number.isFinite(observedMs)) return null;
+  if (now - observedMs > OBSERVATION_MAX_AGE_MS) return [];
+  const provider = AIR_QUALITY_PROVIDERS.eea;
+  const readings = [];
+  for (const [stationId, station] of stations) {
+    const value = eaqiLevel(map[stationId]);
+    if (value === null) continue;
+    const partial = map[`${stationId}_cp`] !== 2;
+    const band = bandForValue(provider.id, value);
+    readings.push({
+      id: `${provider.id}:${stationId}`,
+      provider: provider.id,
+      scale: provider.scale,
+      value,
+      band,
+      stationId,
+      name: station.name,
+      zone: station.zone,
+      lat: station.lat,
+      lon: station.lon,
+      observedMs,
+      color:
+        partial && value <= 3
+          ? AIR_QUALITY_UNKNOWN_COLOR
+          : airQualityColor(band),
+      label: valueLabel(provider.id, value),
+      risk: bandRiskText(band),
+      note: partial
+        ? msg('Partial index: fewer pollutants than required')
+        : null,
+    });
+  }
+  return readings.sort(
     (a, b) => b.value - a.value || a.stationId.localeCompare(b.stationId),
   );
 }
