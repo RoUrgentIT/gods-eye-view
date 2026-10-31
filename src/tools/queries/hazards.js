@@ -27,8 +27,9 @@ export const getEarthquakes = defineTool({
   name: 'get_earthquakes',
   title: 'Recent earthquakes',
   description:
-    'Earthquakes of magnitude 2.5 or more from the USGS feed for the last 24 ' +
-    'hours, strongest first. Optionally limited to an area and a minimum magnitude.',
+    'Earthquakes of magnitude 2.5 or more from the USGS feed, plus EMSC events ' +
+    'USGS does not carry (strong in Europe), for the last 24 hours, strongest ' +
+    'first. Optionally limited to an area and a minimum magnitude.',
   inputSchema: {
     type: 'object',
     properties: {

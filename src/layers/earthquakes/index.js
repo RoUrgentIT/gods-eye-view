@@ -9,7 +9,11 @@ import {
   mapAnalystRecord,
 } from './model.js';
 export * from './model.js';
-export { createUsgsEarthquakeSource } from './source.js';
+export {
+  createUsgsEarthquakeSource,
+  createEmscEarthquakeSource,
+  createEarthquakeSource,
+} from './source.js';
 
 // A portable package (no i18n): the error stays English data and the layer
 // panel shows it translated.
@@ -32,7 +36,7 @@ export function createEarthquakesLayer({ source, overlayHost } = {}) {
     id: 'earthquakes',
     name: 'Earthquakes (24h)',
     icon: '🌋',
-    source: 'USGS',
+    source: 'USGS + EMSC',
     updateInterval: 60000,
 
     init(viewer) {
@@ -89,6 +93,8 @@ export function createEarthquakesLayer({ source, overlayHost } = {}) {
           mag,
           place,
           time,
+          emscId = null,
+          agency = null,
         } of rows) {
           count++;
           const baseRadius = Math.pow(2, mag) * 1000;
@@ -118,6 +124,9 @@ export function createEarthquakesLayer({ source, overlayHost } = {}) {
               properties: {
                 // Analyst seam (additive): the USGS event id (e.g. "us7000abcd").
                 usgsId,
+                // EMSC events USGS does not carry: EMSC id and authoring agency.
+                emscId,
+                agency,
                 mag,
                 place,
                 time,
@@ -210,7 +219,7 @@ export function createEarthquakesLayer({ source, overlayHost } = {}) {
         result.push(
           mapAnalystRecord(
             {
-              id: p?.usgsId?.getValue(now) ?? null,
+              id: p?.usgsId?.getValue(now) ?? p?.emscId?.getValue(now) ?? null,
               mag: p?.mag?.getValue(now),
               place: p?.place?.getValue(now),
               time: p?.time?.getValue(now),

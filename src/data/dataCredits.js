@@ -151,6 +151,10 @@ export const DATA_CREDITS = [
     html: 'Earthquakes: Data courtesy of the U.S. Geological Survey',
   },
   {
+    key: 'emsc',
+    html: 'Earthquakes: Credit: <a href="https://www.seismicportal.eu" target="_blank" rel="noopener">EMSC-CSEM SeismicPortal</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>',
+  },
+  {
     key: 'nasa-gibs',
     html:
       'Recent imagery: We acknowledge the use of imagery provided by services from ' +
