@@ -1,4 +1,9 @@
-import { weatherTileUrl } from './source.js';
+import {
+  weatherTileUrl,
+  INFRARED_PRODUCTS,
+  LIGHTNING_PRODUCTS,
+  isEumetsatProduct,
+} from './source.js';
 import { orderWeatherImagery } from './imageryOrder.js';
 import { imageryHostStatus } from './imageryHost.js';
 import { createRasterTileProvider } from './rasterTiles.js';
@@ -250,12 +255,11 @@ function createGlobeRendering({
         controller: new AbortController(),
         collection,
         kind,
-        priority:
-          snapshot.product === 'lightning'
-            ? 3
-            : snapshot.product === 'radar'
-              ? 2
-              : 1,
+        priority: LIGHTNING_PRODUCTS.includes(snapshot.product)
+          ? 3
+          : snapshot.product === 'radar'
+            ? 2
+            : 1,
         product: snapshot.product,
         requests: new Set(),
         retries: new Map(),
@@ -343,11 +347,13 @@ function createGlobeRendering({
             : undefined,
         );
         const credit = new cesium.Credit(
-          snapshot.product === 'lightning'
-            ? 'NOAA/NWS lightning density · derived from Vaisala NLDN/GLD360'
-            : snapshot.product === 'radar'
-              ? 'NOAA nowCOAST · NWS/OAR MRMS'
-              : 'NOAA nowCOAST · NESDIS GOES / global satellite partners',
+          isEumetsatProduct(snapshot.product)
+            ? `EUMETSAT EUMETView · ${snapshot.attribution}`
+            : snapshot.product === 'lightning'
+              ? 'NOAA/NWS lightning density · derived from Vaisala NLDN/GLD360'
+              : snapshot.product === 'radar'
+                ? 'NOAA nowCOAST · NWS/OAR MRMS'
+                : 'NOAA nowCOAST · NESDIS GOES / global satellite partners',
           false,
         );
         const provider = global
@@ -392,7 +398,11 @@ function createGlobeRendering({
             .then((image) => {
               // Cesium decodes tiles as ImageBitmaps already flipped, since WebGL
               // ignores UNPACK_FLIP_Y for them; a canvas upload flips again.
-              if (!frame.closed && snapshot.product === 'clouds-regional')
+              if (
+                !frame.closed &&
+                INFRARED_PRODUCTS.includes(snapshot.product) &&
+                snapshot.product !== 'clouds'
+              )
                 image = processInfraredImage(image, infrared, createCanvas, {
                   flipY:
                     typeof ImageBitmap !== 'undefined' &&

@@ -310,6 +310,10 @@ const OPTION_GROUPS = Object.freeze({
       light: 'l',
       strong: 's',
     }),
+    enumOption('product', 'p', 'lightning', ['lightning', 'lightning-europe'], {
+      lightning: 'a',
+      'lightning-europe': 'e',
+    }),
   ]),
   'weather-radar': Object.freeze([
     enumOption('opacity', 'o', 'strong', ['light', 'strong'], {
@@ -327,8 +331,8 @@ const OPTION_GROUPS = Object.freeze({
       'product',
       'p',
       'clouds-regional',
-      ['clouds', 'clouds-regional'],
-      { clouds: 'g', 'clouds-regional': 'r' },
+      ['clouds', 'clouds-regional', 'clouds-europe'],
+      { clouds: 'g', 'clouds-regional': 'r', 'clouds-europe': 'e' },
     ),
   ]),
   wind: Object.freeze([

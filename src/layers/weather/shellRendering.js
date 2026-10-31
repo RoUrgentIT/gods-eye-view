@@ -1,6 +1,10 @@
 import { acquireWeatherImage } from './infraredImage.js';
 import { imageryHostStatus } from './imageryHost.js';
-import { WEATHER_DETAIL_SIZE, WEATHER_IMAGE_SIZES } from './source.js';
+import {
+  WEATHER_DETAIL_SIZE,
+  WEATHER_IMAGE_SIZES,
+  INFRARED_PRODUCTS,
+} from './source.js';
 import { msg } from '../../i18n/index.js';
 
 /** Metres above the ellipsoid. Lower shells draw first, so lightning draws last. */
@@ -8,8 +12,10 @@ export const WEATHER_SHELL_HEIGHTS = Object.freeze({
   wind: 5_000,
   clouds: 5_500,
   'clouds-regional': 5_800,
+  'clouds-europe': 5_800,
   radar: 6_200,
   lightning: 6_600,
+  'lightning-europe': 6_600,
 });
 // Decoded canvases per renderer, full-extent and detail images alike: the shown
 // frame and the warmed next frame, each full-extent and detail (four 4096×2048
@@ -411,7 +417,7 @@ export function createWeatherShell({
   const scene = viewer.scene;
   const size = fitTexture(cesium, WEATHER_IMAGE_SIZES[product]);
   const detailSize = fitTexture(cesium, WEATHER_DETAIL_SIZE);
-  const infrared = product === 'clouds' || product === 'clouds-regional';
+  const infrared = INFRARED_PRODUCTS.includes(product);
   // Global infrared contrast depends on the requested extent, so a window would
   // not match the image around it; the globe host also shows one mosaic.
   const detailed = product !== 'clouds';

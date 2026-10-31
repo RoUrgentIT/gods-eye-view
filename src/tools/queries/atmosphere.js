@@ -19,14 +19,18 @@ const MAPS = {
   radar: 'radar',
   satellite: 'clouds-regional',
   global_satellite: 'clouds',
+  europe_satellite: 'clouds-europe',
   lightning: 'lightning',
+  europe_lightning: 'lightning-europe',
 };
 /** The app layer that shows each map. */
 const MAP_LAYERS = {
   radar: 'weather-radar',
   satellite: 'weather-satellite',
   global_satellite: 'weather-satellite',
+  europe_satellite: 'weather-satellite',
   lightning: 'weather-lightning',
+  europe_lightning: 'weather-lightning',
 };
 const IMAGE_SIZE = { width: 1024, height: 512 };
 const SNAP_DEGREES = 0.25;
@@ -86,9 +90,10 @@ export const getWeatherMap = defineTool({
   name: 'get_weather_map',
   title: 'Weather map',
   description:
-    'The latest NOAA weather map image over an area: precipitation radar ' +
-    '(contiguous US), regional or global infrared satellite clouds, or ' +
-    'lightning density (the Americas). Returns the image itself.',
+    'The latest observed weather map image over an area: NOAA precipitation ' +
+    'radar (contiguous US), NOAA regional or global infrared satellite clouds, ' +
+    'NOAA lightning density (the Americas), or EUMETSAT Meteosat infrared ' +
+    'clouds and lightning flash area (Europe and Africa). Returns the image itself.',
   inputSchema: {
     type: 'object',
     properties: {

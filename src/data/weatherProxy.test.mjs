@@ -1159,3 +1159,150 @@ test('large tile validation checks requested dimensions and bounded compressed b
   });
   assert.equal((await request(`${tile()}&size=1024`)).statusCode, 200);
 });
+
+// EUMETView publishes one layer per capabilities document and time as a
+// start/end/period interval.
+function eumetview(
+  name,
+  interval,
+  defaultTime = (interval.split('/')[1] ?? interval).replace('.000Z', 'Z'),
+) {
+  return `<WMS_Capabilities><Capability><Layer><Title>EUMETSAT</Title><Layer queryable="1" opaque="0"><Name>${name}</Name><Title>Unused</Title><EX_GeographicBoundingBox><westBoundLongitude>-70.0</westBoundLongitude><eastBoundLongitude>70.0</eastBoundLongitude><southBoundLatitude>-70.0</southBoundLatitude><northBoundLatitude>70.0</northBoundLatitude></EX_GeographicBoundingBox><Dimension name="time" default="${defaultTime}" units="ISO8601" nearestValue="1">${interval}</Dimension></Layer></Layer></Capability></WMS_Capabilities>`;
+}
+const EU_END = '2026-09-16T02:00:00.000Z';
+
+test('EUMETView intervals become the newest advertised frames at the declared cadence', () => {
+  const parsed = parseWeatherCapabilities(
+    eumetview('ir105_hrfi', `2024-09-23T00:00:00.000Z/${EU_END}/PT10M`),
+    'clouds-europe',
+    NOW,
+  );
+  assert.deepEqual(parsed.bounds, {
+    west: -70,
+    south: -70,
+    east: 70,
+    north: 70,
+  });
+  assert.equal(parsed.allowedTimes.length, 26);
+  assert.equal(parsed.times.length, 13);
+  assert.equal(parsed.times.at(-1), EU_END);
+  assert.equal(parsed.allowedTimes[0], '2026-09-15T21:50:00.000Z');
+  for (const [a, b] of parsed.allowedTimes
+    .slice(1)
+    .map((t, i) => [parsed.allowedTimes[i], t]))
+    assert.equal(Date.parse(b) - Date.parse(a), 10 * 60_000);
+  // A short archive yields only the frames inside it.
+  const short = parseWeatherCapabilities(
+    eumetview('li_afa', `2026-09-16T01:50:00.000Z/${EU_END}/PT5M`),
+    'lightning-europe',
+    NOW,
+  );
+  assert.deepEqual(short.allowedTimes, [
+    '2026-09-16T01:50:00.000Z',
+    '2026-09-16T01:55:00.000Z',
+    EU_END,
+  ]);
+});
+
+test('EUMETView intervals are accepted only at their declared period and with a matching default', () => {
+  for (const text of [
+    eumetview('ir105_hrfi', `2024-09-23T00:00:00.000Z/${EU_END}/PT5M`),
+    eumetview('ir105_hrfi', `2024-09-23T00:00:00.000Z/${EU_END}/PT1H`),
+    eumetview('ir105_hrfi', `${EU_END}/2024-09-23T00:00:00.000Z/PT10M`),
+    eumetview('ir105_hrfi', `2024-09-23T00:00:00.000Z/${EU_END}`),
+    eumetview('ir105_hrfi', EU_END),
+    eumetview(
+      'ir105_hrfi',
+      `2024-09-23T00:00:00.000Z/${EU_END}/PT10M`,
+      '2026-09-16T01:55:00Z',
+    ),
+    eumetview(
+      'ir105_hrfi',
+      '2024-09-23T00:00:00.000Z/2026-09-17T00:00:00.000Z/PT10M',
+    ),
+    eumetview(
+      'ir105_hrfi',
+      '2024-09-23T00:00:00.000Z/2026-09-14T00:00:00.000Z/PT10M',
+    ),
+    eumetview('li_afa', `2024-09-23T00:00:00.000Z/${EU_END}/PT10M`),
+  ])
+    assert.throws(() => parseWeatherCapabilities(text, 'clouds-europe', NOW));
+  // NOAA products keep rejecting intervals.
+  assert.throws(() =>
+    parseWeatherCapabilities(
+      eumetview(NAMES[0], `2026-09-16T01:00:00.000Z/${EU_END}/PT5M`),
+      'radar',
+      NOW,
+    ),
+  );
+});
+
+test('EUMETSAT products use fixed EUMETView endpoints, layers and a dated CC BY credit', async () => {
+  const calls = [];
+  const { request } = install({
+    fetchImpl: async (url) => {
+      const parsed = new URL(url);
+      calls.push(parsed);
+      if (parsed.searchParams.get('request') === 'GetCapabilities')
+        return new Response(
+          parsed.pathname.includes('li_afa')
+            ? eumetview('li_afa', `2025-05-30T15:00:00.000Z/${EU_END}/PT5M`)
+            : eumetview(
+                'ir105_hrfi',
+                `2024-09-23T00:00:00.000Z/${EU_END}/PT10M`,
+              ),
+        );
+      return image();
+    },
+  });
+  const manifest = body(await request('/manifest?product=clouds-europe'));
+  assert.equal(manifest.source, 'EUMETSAT EUMETView');
+  assert.equal(
+    manifest.attribution,
+    'Contains modified EUMETSAT Meteosat data 2026',
+  );
+  assert.equal(manifest.latest, EU_END);
+  assert.equal(manifest.unavailable, false);
+  const lightning = body(await request('/manifest?product=lightning-europe'));
+  assert.equal(lightning.latest, EU_END);
+  assert.equal(lightning.times.length, 13);
+  assert.equal(
+    (
+      await request(
+        tile({ product: 'clouds-europe', time: EU_END, z: 2, x: 4, y: 0 }),
+      )
+    ).statusCode,
+    200,
+  );
+  const getMap = calls.find(
+    (url) => url.searchParams.get('request') === 'GetMap',
+  );
+  assert.equal(
+    `${getMap.origin}${getMap.pathname}`,
+    'https://view.eumetsat.int/geoserver/mtg_fd/ir105_hrfi/ows',
+  );
+  assert.equal(getMap.searchParams.get('layers'), 'ir105_hrfi');
+  assert.equal(
+    getMap.searchParams.get('styles'),
+    'mtg_fd_ir105_hrfi_grayscale',
+  );
+  assert.equal(getMap.searchParams.get('srs'), 'EPSG:4326');
+  assert.equal(getMap.searchParams.get('time'), EU_END);
+  assert.equal(
+    calls
+      .filter((url) => url.searchParams.get('request') === 'GetCapabilities')
+      .map((url) => url.pathname)
+      .sort()
+      .join(','),
+    '/geoserver/mtg_fd/ir105_hrfi/ows,/geoserver/mtg_fd/li_afa/ows',
+  );
+  // A frame between advertised ten-minute steps is refused, never snapped.
+  assert.equal(
+    (
+      await request(
+        tile({ product: 'clouds-europe', time: '2026-09-16T01:55:00.000Z' }),
+      )
+    ).statusCode,
+    400,
+  );
+});

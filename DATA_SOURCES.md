@@ -395,6 +395,40 @@ Community context: [#85](https://github.com/bilawalsidhu/gods-eye-view/issues/85
 This implementation is original; those contributions have not been merged here.
 
 
+### Observed weather: EUMETSAT EUMETView (Europe and Africa)
+
+The Satellite clouds and Lightning density rows offer a **Europe + Africa**
+region from the keyless EUMETSAT EUMETView WMS, where NOAA's regional products
+do not reach. Fixed per-layer endpoints:
+`https://view.eumetsat.int/geoserver/mtg_fd/ir105_hrfi/ows` and
+`https://view.eumetsat.int/geoserver/mtg_fd/li_afa/ows`.
+
+- `ir105_hrfi` (style `mtg_fd_ir105_hrfi_grayscale`): MTG-I FCI infrared
+  10.5 µm, approximately 1 km at the sub-satellite point and 1.5–2 km over
+  Europe, 10-minute repeat, typically 20–30 minutes from observation to
+  publication. **Clouds only** applies the same brightness filter as the GOES
+  products; it is not a cloud mask.
+- `li_afa`: MTG Lightning Imager Accumulated Flash Area, optical flashes counted
+  per pixel over 5 minutes on EUMETSAT's 1 to 20+ scale. Space-based optical
+  detection, not ground strikes, a live strike count or a safety warning.
+- Coverage is the Meteosat 0° disk advertised as 70°S–70°N, 70°W–70°E.
+
+EUMETView advertises time as one `start/end/PT<n>M` interval. The proxy accepts
+an interval only for these two products and only at their declared period, and
+expands it into the newest 26 steps (13 offered for replay); the default time must
+equal the interval end. A frame between steps is refused rather than snapped by
+WMS `nearestValue`, the same exact-time rule as nowCOAST. GetMap requests use
+WMS 1.1.1 EPSG:4326 with the existing size, byte, cache and concurrency bounds.
+
+Rights: the [EUMETSAT Data Policy](https://www.eumetsat.int/eumetsat-data-licensing)
+classes SEVIRI, FCI and LI image products and their Web Map Service
+visualisations as Core data, available free and unrestricted under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), commercial use
+included. Required credit, shown on the globe credit line and in the manifest:
+"Contains modified EUMETSAT Meteosat data <year>". The modifications are tiling,
+reprojection to EPSG:4326 and the display filter. No EUMETSAT endorsement is
+implied, and no key, account or new dependency is needed.
+
 ### Weather: NHC/CPHC cyclone advisories
 
 - **Sources:** [NHC current tropical cyclone status](https://www.nhc.noaa.gov/CurrentStorms.json) and

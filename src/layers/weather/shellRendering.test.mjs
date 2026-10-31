@@ -125,8 +125,10 @@ test('shell heights stack every product with lightning highest', () => {
     wind: 5_000,
     clouds: 5_500,
     'clouds-regional': 5_800,
+    'clouds-europe': 5_800,
     radar: 6_200,
     lightning: 6_600,
+    'lightning-europe': 6_600,
   });
   assert.equal(WEATHER_SHELL_CACHE_BYTES, 128 * 1024 * 1024);
 });

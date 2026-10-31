@@ -412,6 +412,10 @@ export const DATA_CREDITS = [
     html: 'Observed weather: <a href="https://nowcoast.noaa.gov/" target="_blank" rel="noopener">NOAA nowCOAST</a> · NWS/OAR MRMS radar; NESDIS GOES and global satellite partners. <a href="https://oceanservice.noaa.gov/disclaimer.html" target="_blank" rel="noopener">Source disclaimer</a>.',
   },
   {
+    key: 'weather-eumetsat',
+    html: 'Meteosat infrared and lightning flash area: contains modified <a href="https://www.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a> Meteosat data via <a href="https://view.eumetsat.int/" target="_blank" rel="noopener">EUMETView</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Tiled, reprojected to EPSG:4326 and filtered for display.',
+  },
+  {
     key: 'weather-cyclones',
     html: 'Cyclone advisories: <a href="https://www.nhc.noaa.gov/" target="_blank" rel="noopener">NOAA/NWS NHC / CPHC</a> · Atlantic and eastern/central North Pacific. Forecast center uncertainty, not storm size.',
   },

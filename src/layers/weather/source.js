@@ -8,8 +8,25 @@ const WEATHER_PRODUCTS = Object.freeze([
   'radar',
   'clouds',
   'clouds-regional',
+  'clouds-europe',
   'lightning',
+  'lightning-europe',
 ]);
+
+/** Satellite infrared products, which share the cloud brightness filter. */
+export const INFRARED_PRODUCTS = Object.freeze([
+  'clouds',
+  'clouds-regional',
+  'clouds-europe',
+]);
+/** Lightning products, one per regional source. */
+export const LIGHTNING_PRODUCTS = Object.freeze([
+  'lightning',
+  'lightning-europe',
+]);
+/** EUMETSAT Meteosat products over Europe and Africa. */
+export const isEumetsatProduct = (product) =>
+  product === 'clouds-europe' || product === 'lightning-europe';
 
 /** Only bounded, explicit observations may become imagery requests. */
 export function validateWeatherSnapshot(value, product) {
@@ -52,8 +69,10 @@ export function validateWeatherSnapshot(value, product) {
 export const WEATHER_IMAGE_SIZES = Object.freeze({
   radar: Object.freeze({ width: 4096, height: 2048 }),
   'clouds-regional': Object.freeze({ width: 4096, height: 2048 }),
+  'clouds-europe': Object.freeze({ width: 4096, height: 2048 }),
   clouds: Object.freeze({ width: 2048, height: 1024 }),
   lightning: Object.freeze({ width: 4096, height: 2048 }),
+  'lightning-europe': Object.freeze({ width: 4096, height: 2048 }),
 });
 /** Largest detail-window image for every product; also the proxy default. */
 export const WEATHER_DETAIL_SIZE = Object.freeze({ width: 4096, height: 2048 });

@@ -1648,9 +1648,9 @@ test('satellite mode chips restage history without changing time or latest-follo
   assert.deepEqual(
     h.layer
       .getRowControls()
-      .chips.slice(0, 4)
+      .chips.slice(0, 5)
       .map((chip) => chip.label),
-    ['N. America', 'Global', 'Clouds only', 'Full'],
+    ['N. America', 'Europe + Africa', 'Global', 'Clouds only', 'Full'],
   );
   h.stages[2].finish();
   await flush();
@@ -1989,7 +1989,11 @@ test('observed descriptors keep configuration only and label satellite clouds by
     assert.equal(controls.summary.sections, undefined);
     assert.deepEqual(
       controls.summary.settings.map(({ label }) => label),
-      id === 'weather-satellite' ? ['REGION', 'IMAGE', 'OPACITY'] : ['OPACITY'],
+      id === 'weather-satellite'
+        ? ['REGION', 'IMAGE', 'OPACITY']
+        : id === 'weather-lightning'
+          ? ['REGION', 'OPACITY']
+          : ['OPACITY'],
     );
     assert.deepEqual(
       controls.summary.settings.flatMap(({ chips }) => chips),
@@ -2399,4 +2403,49 @@ test('disabled weather releases its camera listener and re-enabling binds only o
   assert.equal(h.moveEnd.size, 1);
   h.layer.destroy();
   assert.equal(h.moveEnd.size, 0);
+});
+
+test('lightning and satellite rows switch to the EUMETSAT Europe + Africa region', () => {
+  const lightning = layerHarness({ id: 'weather-lightning' });
+  assert.equal(
+    lightning.layer.getRowControls().summary.coverage,
+    'Americas + Pacific',
+  );
+  // A product from another row is ignored.
+  lightning.layer.setParams({ product: 'clouds-europe' });
+  assert.equal(lightning.layer.getStats().source, 'NOAA nowCOAST');
+  lightning.layer.setParams({ product: 'lightning-europe' });
+  const controls = lightning.layer.getRowControls();
+  assert.equal(controls.summary.coverage, 'Europe + Africa');
+  assert.equal(controls.summary.label, 'Lightning flash area · 5 min');
+  assert.equal(controls.summary.units, 'flashes / 5 min');
+  assert.deepEqual(
+    controls.legend.map(({ label }) => label),
+    ['1', '5', '10', '15', '20+'],
+  );
+  assert.deepEqual(
+    controls.chips
+      .filter(({ params }) => params.product)
+      .map(({ id, active }) => [id, active]),
+    [
+      ['lightning', false],
+      ['lightning-europe', true],
+    ],
+  );
+  assert.equal(
+    controls.chips.find(({ id }) => id === 'coverage').label,
+    'View coverage',
+  );
+  assert.equal(lightning.layer.getStats().source, 'EUMETSAT EUMETView');
+  assert.equal(lightning.layer.source, 'EUMETSAT EUMETView · OBSERVED');
+
+  const satellite = layerHarness({ id: 'weather-satellite' });
+  satellite.layer.setParams({ product: 'clouds-europe' });
+  const clouds = satellite.layer.getRowControls();
+  assert.equal(clouds.summary.coverage, 'Europe + Africa');
+  assert.equal(
+    clouds.chips.find(({ id }) => id === 'clouds-europe').active,
+    true,
+  );
+  assert.equal(satellite.layer.getStats().source, 'EUMETSAT EUMETView');
 });
